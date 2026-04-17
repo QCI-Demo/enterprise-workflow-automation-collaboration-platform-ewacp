@@ -1,0 +1,117 @@
+@startuml EWACP_Data_Models
+!theme plain
+skinparam linetype ortho
+
+title EWACP — Domain data model (per bounded context)
+
+' --- Workflow Engine ---
+package "Workflow Engine" as PKG_WE {
+  entity "WorkflowDefinition" as WD {
+    * id : UUID
+    --
+    * tenant_id : string
+    * key : string
+    * version : int
+    status : enum
+    graph_json : text
+    created_at : timestamptz
+  }
+
+  entity "WorkflowInstance" as WI {
+    * id : UUID
+    --
+    * tenant_id : string
+    * definition_id : UUID <<FK>>
+    * correlation_id : string
+    current_state : string
+    variables_ref : string
+    status : enum
+    updated_at : timestamptz
+  }
+
+  WD ||--o{ WI : instantiates
+}
+
+' --- Task Scheduler ---
+package "Task Scheduler" as PKG_TS {
+  entity "Schedule" as SCH {
+    * id : UUID
+    --
+    * tenant_id : string
+    cron : string
+    run_at : timestamptz
+    timezone : string
+    payload_ref : string
+    owner_service : string
+    status : enum
+  }
+
+  entity "TaskRun" as TR {
+    * id : UUID
+    --
+    * schedule_id : UUID <<FK>>
+    attempt : int
+    next_run_at : timestamptz
+    last_result : string
+    dlq : boolean
+  }
+
+  SCH ||--o{ TR : records
+}
+
+' --- Persistence (cross-cutting storage) ---
+package "Persistence Service" as PKG_PS {
+  entity "TenantScopedEntity" as TSE {
+    * tenant_id : string
+    --
+    tags : string[]
+    retention_policy : string
+  }
+
+  entity "AuditEvent" as AE {
+    * id : UUID
+    --
+    * tenant_id : string
+    actor : string
+    action : string
+    resource : string
+    payload_ref : string
+    occurred_at : timestamptz
+  }
+
+  TSE <|-- WD
+  TSE <|-- SCH
+}
+
+' --- Business Rules Engine ---
+package "Business Rules Engine" as PKG_BRE {
+  entity "RuleSet" as RS {
+    * id : UUID
+    --
+    * tenant_id : string
+    * key : string
+    * version : int
+    input_schema_ref : string
+    output_schema_ref : string
+    status : enum
+  }
+
+  entity "EvaluationResult" as ER {
+    * id : UUID
+    --
+    * rule_set_id : UUID <<FK>>
+    * correlation_id : string
+    decision : string
+    trace_ref : string
+    evaluated_at : timestamptz
+  }
+
+  RS ||--o{ ER : produces
+}
+
+' Cross-context references (logical, not necessarily FK in one DB)
+WI ..> SCH : may trigger\n(schedule ref)
+WI ..> RS : decision nodes
+SCH ..> WI : callback correlation
+
+@enduml
