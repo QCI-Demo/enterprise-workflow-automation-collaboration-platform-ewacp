@@ -9,5 +9,9 @@ vendor/
 # Build / IDE
 dist/
 build/
+target/
 .idea/
 *.log
+
+# Spring
+HELP.md
