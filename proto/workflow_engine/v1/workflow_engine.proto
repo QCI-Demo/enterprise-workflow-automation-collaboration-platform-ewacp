@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package workflow_engine.v1;
+
+option go_package = "github.com/ewacp/workflow-engine/gen/workflow_engine/v1;workflow_enginev1";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// Workflow Engine gRPC API (mirrors REST in openapi/workflow-engine.yaml).
+
+service WorkflowEngineService {
+  rpc ListWorkflowDefinitions(ListWorkflowDefinitionsRequest) returns (ListWorkflowDefinitionsResponse);
+  rpc CreateWorkflowDefinition(CreateWorkflowDefinitionRequest) returns (WorkflowDefinition);
+  rpc GetWorkflowDefinition(GetWorkflowDefinitionRequest) returns (WorkflowDefinition);
+  rpc StartWorkflowInstance(StartWorkflowInstanceRequest) returns (WorkflowInstance);
+  rpc SignalWorkflowInstance(SignalWorkflowInstanceRequest) returns (google.protobuf.Empty);
+}
+
+message WorkflowDefinition {
+  string id = 1;
+  string tenant_id = 2;
+  string key = 3;
+  int32 version = 4;
+  string status = 5;
+  google.protobuf.Timestamp created_at = 6;
+  // Graph is JSON in REST; use struct or bytes in implementations.
+  string graph_json = 7;
+}
+
+message WorkflowInstance {
+  string id = 1;
+  string tenant_id = 2;
+  string definition_id = 3;
+  string correlation_id = 4;
+  string current_state = 5;
+  string status = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message ListWorkflowDefinitionsRequest {
+  string tenant_id = 1;
+  string status = 2;
+}
+
+message ListWorkflowDefinitionsResponse {
+  repeated WorkflowDefinition items = 1;
+}
+
+message CreateWorkflowDefinitionRequest {
+  string tenant_id = 1;
+  string key = 2;
+  string graph_json = 3;
+}
+
+message GetWorkflowDefinitionRequest {
+  string tenant_id = 1;
+  string definition_id = 2;
+}
+
+message StartWorkflowInstanceRequest {
+  string tenant_id = 1;
+  string definition_id = 2;
+  string correlation_id = 3;
+  string variables_json = 4;
+}
+
+message SignalWorkflowInstanceRequest {
+  string tenant_id = 1;
+  string instance_id = 2;
+  string name = 3;
+  string payload_json = 4;
+}

@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package task_scheduler.v1;
+
+option go_package = "github.com/ewacp/task-scheduler/gen/task_scheduler/v1;task_schedulerv1";
+
+import "google/protobuf/timestamp.proto";
+
+// Task Scheduler gRPC API (mirrors REST in openapi/task-scheduler.yaml).
+
+service TaskSchedulerService {
+  rpc ListSchedules(ListSchedulesRequest) returns (ListSchedulesResponse);
+  rpc CreateSchedule(CreateScheduleRequest) returns (Schedule);
+  rpc CancelSchedule(CancelScheduleRequest) returns (CancelScheduleResponse);
+  rpc ListTaskRuns(ListTaskRunsRequest) returns (ListTaskRunsResponse);
+}
+
+message Schedule {
+  string id = 1;
+  string tenant_id = 2;
+  string cron = 3;
+  google.protobuf.Timestamp run_at = 4;
+  string timezone = 5;
+  string payload_ref = 6;
+  string owner_service = 7;
+  string callback_url = 8;
+  string status = 9;
+}
+
+message TaskRun {
+  string id = 1;
+  string schedule_id = 2;
+  int32 attempt = 3;
+  google.protobuf.Timestamp next_run_at = 4;
+  string last_result = 5;
+  bool dlq = 6;
+}
+
+message ListSchedulesRequest {
+  string tenant_id = 1;
+  string owner_service = 2;
+}
+
+message ListSchedulesResponse {
+  repeated Schedule items = 1;
+}
+
+message CreateScheduleRequest {
+  string tenant_id = 1;
+  string cron = 2;
+  google.protobuf.Timestamp run_at = 3;
+  string timezone = 4;
+  string payload_ref = 5;
+  string owner_service = 6;
+  string callback_url = 7;
+}
+
+message CancelScheduleRequest {
+  string tenant_id = 1;
+  string schedule_id = 2;
+}
+
+message CancelScheduleResponse {}
+
+message ListTaskRunsRequest {
+  string tenant_id = 1;
+  string schedule_id = 2;
+}
+
+message ListTaskRunsResponse {
+  repeated TaskRun items = 1;
+}

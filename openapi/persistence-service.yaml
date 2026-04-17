@@ -1,0 +1,328 @@
+openapi: 3.0.3
+info:
+  title: EWACP Persistence Service API
+  version: 1.0.0
+  description: |
+    Tenant-scoped persistence API for workflow and scheduling projections.
+    gRPC contracts are defined in `proto/persistence/v1/persistence.proto`.
+
+servers:
+  - url: https://persistence.ewacp.example/v1
+    description: Production
+  - url: http://localhost:8083/v1
+    description: Local development
+
+tags:
+  - name: Records
+  - name: Audit
+
+security:
+  - OAuth2:
+      - openid
+      - ewacp.persistence.read
+
+paths:
+  /records/{resourceType}:
+    get:
+      tags: [Records]
+      summary: Query records by type
+      operationId: queryRecords
+      security:
+        - OAuth2: [openid, ewacp.persistence.read]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - name: resourceType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [workflow_definition, workflow_instance, schedule, task_run]
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque pagination cursor.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Page of records.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordPage'
+              examples:
+                page:
+                  value:
+                    items:
+                      - id: 11111111-1111-1111-1111-111111111111
+                        resource_type: workflow_definition
+                        data:
+                          key: onboarding
+                          version: 3
+                    next_cursor: eyJvIjoxfQ==
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './common.yaml#/components/responses/Forbidden'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+    post:
+      tags: [Records]
+      summary: Upsert a record (idempotent by natural key per resource type)
+      operationId: upsertRecord
+      security:
+        - OAuth2: [openid, ewacp.persistence.write]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - $ref: './common.yaml#/components/parameters/IdempotencyKey'
+        - name: resourceType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [workflow_definition, workflow_instance, schedule, task_run]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordUpsert'
+            examples:
+              upsert:
+                value:
+                  id: 11111111-1111-1111-1111-111111111111
+                  data:
+                    key: onboarding
+                    version: 3
+                    status: active
+                  tags:
+                    - pii:false
+      responses:
+        '200':
+          description: Record updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Record'
+        '201':
+          description: Record created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Record'
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '409':
+          $ref: './common.yaml#/components/responses/Conflict'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /records/{resourceType}/{recordId}:
+    get:
+      tags: [Records]
+      summary: Get a record by id
+      operationId: getRecord
+      security:
+        - OAuth2: [openid, ewacp.persistence.read]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - name: resourceType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [workflow_definition, workflow_instance, schedule, task_run]
+        - name: recordId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Record found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Record'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: './common.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+    delete:
+      tags: [Records]
+      summary: Delete a record (soft-delete by default)
+      operationId: deleteRecord
+      security:
+        - OAuth2: [openid, ewacp.persistence.write]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - name: resourceType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [workflow_definition, workflow_instance, schedule, task_run]
+        - name: recordId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: hard
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '204':
+          description: Deleted (or marked deleted).
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: './common.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /audit/events:
+    post:
+      tags: [Audit]
+      summary: Append an audit event (ingestion API for services)
+      operationId: appendAuditEvent
+      security:
+        - OAuth2: [openid, ewacp.persistence.write]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditEventIn'
+            examples:
+              evt:
+                value:
+                  actor: service:workflow-engine
+                  action: workflow.started
+                  resource: workflow_instance:22222222-2222-2222-2222-222222222222
+                  payload_ref: null
+      responses:
+        '202':
+          description: Event accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEvent'
+              examples:
+                accepted:
+                  value:
+                    id: 55555555-5555-5555-5555-555555555555
+                    tenant_id: acme-corp
+                    actor: service:workflow-engine
+                    action: workflow.started
+                    resource: workflow_instance:22222222-2222-2222-2222-222222222222
+                    occurred_at: '2026-04-17T12:00:10Z'
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: './common.yaml#/components/securitySchemes/OAuth2'
+
+  schemas:
+    Record:
+      type: object
+      required: [id, resource_type, data]
+      properties:
+        id:
+          type: string
+          format: uuid
+        resource_type:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items:
+            type: string
+
+    RecordUpsert:
+      type: object
+      required: [data]
+      properties:
+        id:
+          type: string
+          format: uuid
+        data:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items:
+            type: string
+
+    RecordPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Record'
+        next_cursor:
+          type: string
+          nullable: true
+
+    AuditEventIn:
+      type: object
+      required: [actor, action, resource]
+      properties:
+        actor:
+          type: string
+        action:
+          type: string
+        resource:
+          type: string
+        payload_ref:
+          type: string
+          nullable: true
+
+    AuditEvent:
+      allOf:
+        - $ref: '#/components/schemas/AuditEventIn'
+        - type: object
+          required: [id, tenant_id, occurred_at]
+          properties:
+            id:
+              type: string
+              format: uuid
+            tenant_id:
+              type: string
+            occurred_at:
+              type: string
+              format: date-time

@@ -1,0 +1,64 @@
+@startuml EWACP_Microservice_Components
+!theme plain
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+title EWACP — Microservice boundaries (component view)
+
+package "Clients & Edge" {
+  [Web / Mobile / Adapters] as Clients
+  [API Gateway\n(OAuth2/OIDC, RBAC, rate limits)] as Gateway
+}
+
+package "Workflow bounded context" {
+  component "Workflow Engine" as WE <<stateless>> {
+    [Definition & instance API]
+    [Orchestration core]
+  }
+}
+
+package "Scheduling bounded context" {
+  component "Task Scheduler" as TS <<stateless>> {
+    [Schedules & retries]
+    [Run ledger]
+  }
+}
+
+package "Persistence bounded context" {
+  component "Persistence Service" as PS <<stateless>> {
+    [Tenant-scoped CRUD / query]
+    [Audit & retention hooks]
+  }
+}
+
+package "Rules bounded context" {
+  component "Business Rules Engine" as BRE <<stateless>> {
+    [Rule sets & evaluation]
+  }
+}
+
+database "PostgreSQL /\nMySQL" as DB
+
+Clients --> Gateway : HTTPS
+Gateway --> WE : REST / gRPC
+Gateway --> TS : REST / gRPC
+Gateway --> PS : REST / gRPC
+Gateway --> BRE : REST / gRPC
+
+WE --> TS : schedule / cancel work
+WE --> BRE : evaluate decisions
+WE --> PS : definitions & snapshots
+
+TS --> PS : schedules & run records
+BRE --> PS : optional decision audit
+
+WE ..> DB : via PS (logical)
+TS ..> DB : via PS (logical)
+PS --> DB : physical persistence
+
+note right of Gateway
+  Security requirements are specified per service
+  in OpenAPI (OAuth2 bearer, scopes).
+end note
+
+@enduml

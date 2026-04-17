@@ -1,0 +1,11 @@
+{
+  "name": "ewacp-contracts",
+  "private": true,
+  "description": "EWACP API contracts (OpenAPI) and architecture diagrams",
+  "scripts": {
+    "validate:openapi": "swagger-cli validate openapi/workflow-engine.yaml && swagger-cli validate openapi/task-scheduler.yaml && swagger-cli validate openapi/persistence-service.yaml && swagger-cli validate openapi/business-rules-engine.yaml"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-cli": "^4.0.4"
+  }
+}

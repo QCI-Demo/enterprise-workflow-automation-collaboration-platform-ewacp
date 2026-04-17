@@ -1,0 +1,272 @@
+openapi: 3.0.3
+info:
+  title: EWACP Business Rules Engine API
+  version: 1.0.0
+  description: |
+    REST API for rule sets and evaluations. gRPC contracts are defined in
+    `proto/business_rules/v1/business_rules.proto`.
+
+servers:
+  - url: https://rules.ewacp.example/v1
+    description: Production
+  - url: http://localhost:8084/v1
+    description: Local development
+
+tags:
+  - name: RuleSets
+  - name: Evaluation
+
+security:
+  - OAuth2:
+      - openid
+      - ewacp.rules.read
+
+paths:
+  /rule-sets:
+    get:
+      tags: [RuleSets]
+      summary: List rule sets
+      operationId: listRuleSets
+      security:
+        - OAuth2: [openid, ewacp.rules.read]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Rule sets returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RuleSet'
+              examples:
+                sample:
+                  value:
+                    items:
+                      - id: 66666666-6666-6666-6666-666666666666
+                        tenant_id: acme-corp
+                        key: approval-policy
+                        version: 2
+                        status: active
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+    post:
+      tags: [RuleSets]
+      summary: Create a new rule set version
+      operationId: createRuleSet
+      security:
+        - OAuth2: [openid, ewacp.rules.write]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - $ref: './common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleSetCreate'
+            examples:
+              policy:
+                value:
+                  key: approval-policy
+                  input_schema_ref: https://schemas.ewacp.example/rules/approval-input.json
+                  output_schema_ref: https://schemas.ewacp.example/rules/approval-output.json
+                  definition:
+                    when:
+                      - fact: request.amount
+                        op: lte
+                        value: 10000
+                    then:
+                      decision: auto_approve
+      responses:
+        '201':
+          description: Rule set created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleSet'
+              examples:
+                created:
+                  value:
+                    id: 66666666-6666-6666-6666-666666666666
+                    tenant_id: acme-corp
+                    key: approval-policy
+                    version: 1
+                    status: draft
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '409':
+          $ref: './common.yaml#/components/responses/Conflict'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /rule-sets/{ruleSetId}/evaluate:
+    post:
+      tags: [Evaluation]
+      summary: Evaluate inputs against a rule set
+      operationId: evaluateRuleSet
+      security:
+        - OAuth2: [openid, ewacp.rules.evaluate]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - name: ruleSetId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRequest'
+            examples:
+              req:
+                value:
+                  correlation_id: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+                  inputs:
+                    requester: user-42
+                    amount: 2500
+                    department: finance
+      responses:
+        '200':
+          description: Evaluation completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResult'
+              examples:
+                result:
+                  value:
+                    id: 77777777-7777-7777-7777-777777777777
+                    rule_set_id: 66666666-6666-6666-6666-666666666666
+                    correlation_id: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+                    decision: auto_approve
+                    trace_ref: trace/2026/04/17/abc123
+                    evaluated_at: '2026-04-17T12:00:20Z'
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: './common.yaml#/components/responses/NotFound'
+        '422':
+          description: Input satisfied schema but no rule matched (HTTP 422).
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/Error'
+              examples:
+                unprocessable:
+                  value:
+                    code: RULE_NO_MATCH
+                    message: No applicable rule branch for the given inputs.
+                    correlation_id: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: './common.yaml#/components/securitySchemes/OAuth2'
+
+  schemas:
+    RuleSet:
+      type: object
+      required: [id, tenant_id, key, version, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+        key:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [draft, active, retired]
+        input_schema_ref:
+          type: string
+          format: uri
+          nullable: true
+        output_schema_ref:
+          type: string
+          format: uri
+          nullable: true
+        definition:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    RuleSetCreate:
+      type: object
+      required: [key, definition]
+      properties:
+        key:
+          type: string
+        input_schema_ref:
+          type: string
+          format: uri
+        output_schema_ref:
+          type: string
+          format: uri
+        definition:
+          type: object
+          additionalProperties: true
+
+    EvaluationRequest:
+      type: object
+      required: [inputs]
+      properties:
+        correlation_id:
+          type: string
+          format: uuid
+        inputs:
+          type: object
+          additionalProperties: true
+
+    EvaluationResult:
+      type: object
+      required:
+        - id
+        - rule_set_id
+        - correlation_id
+        - decision
+        - evaluated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        rule_set_id:
+          type: string
+          format: uuid
+        correlation_id:
+          type: string
+        decision:
+          type: string
+        explanation:
+          type: string
+          nullable: true
+        trace_ref:
+          type: string
+          nullable: true
+        evaluated_at:
+          type: string
+          format: date-time

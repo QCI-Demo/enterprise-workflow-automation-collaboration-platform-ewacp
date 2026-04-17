@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package persistence.v1;
+
+option go_package = "github.com/ewacp/persistence-service/gen/persistence/v1;persistencev1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// Persistence Service gRPC API (mirrors REST in openapi/persistence-service.yaml).
+
+service PersistenceService {
+  rpc QueryRecords(QueryRecordsRequest) returns (QueryRecordsResponse);
+  rpc UpsertRecord(UpsertRecordRequest) returns (Record);
+  rpc GetRecord(GetRecordRequest) returns (Record);
+  rpc DeleteRecord(DeleteRecordRequest) returns (DeleteRecordResponse);
+  rpc AppendAuditEvent(AppendAuditEventRequest) returns (AuditEvent);
+}
+
+enum ResourceType {
+  RESOURCE_TYPE_UNSPECIFIED = 0;
+  WORKFLOW_DEFINITION = 1;
+  WORKFLOW_INSTANCE = 2;
+  SCHEDULE = 3;
+  TASK_RUN = 4;
+}
+
+message Record {
+  string id = 1;
+  ResourceType resource_type = 2;
+  google.protobuf.Struct data = 3;
+  repeated string tags = 4;
+}
+
+message QueryRecordsRequest {
+  string tenant_id = 1;
+  ResourceType resource_type = 2;
+  string cursor = 3;
+  int32 limit = 4;
+}
+
+message QueryRecordsResponse {
+  repeated Record items = 1;
+  string next_cursor = 2;
+}
+
+message UpsertRecordRequest {
+  string tenant_id = 1;
+  ResourceType resource_type = 2;
+  string id = 3;
+  google.protobuf.Struct data = 4;
+  repeated string tags = 5;
+}
+
+message GetRecordRequest {
+  string tenant_id = 1;
+  ResourceType resource_type = 2;
+  string record_id = 3;
+}
+
+message DeleteRecordRequest {
+  string tenant_id = 1;
+  ResourceType resource_type = 2;
+  string record_id = 3;
+  bool hard = 4;
+}
+
+message DeleteRecordResponse {}
+
+message AuditEvent {
+  string id = 1;
+  string tenant_id = 2;
+  string actor = 3;
+  string action = 4;
+  string resource = 5;
+  string payload_ref = 6;
+  google.protobuf.Timestamp occurred_at = 7;
+}
+
+message AppendAuditEventRequest {
+  string tenant_id = 1;
+  string actor = 2;
+  string action = 3;
+  string resource = 4;
+  string payload_ref = 5;
+}
