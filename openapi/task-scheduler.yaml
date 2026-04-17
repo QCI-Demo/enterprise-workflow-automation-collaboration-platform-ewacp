@@ -1,0 +1,273 @@
+openapi: 3.0.3
+info:
+  title: EWACP Task Scheduler API
+  version: 1.0.0
+  description: |
+    REST API for schedules and task runs. gRPC contracts are defined in
+    `proto/task_scheduler/v1/task_scheduler.proto`.
+
+servers:
+  - url: https://scheduler.ewacp.example/v1
+    description: Production
+  - url: http://localhost:8082/v1
+    description: Local development
+
+tags:
+  - name: Schedules
+  - name: TaskRuns
+
+security:
+  - OAuth2:
+      - openid
+      - ewacp.scheduler.read
+
+paths:
+  /schedules:
+    get:
+      tags: [Schedules]
+      summary: List schedules
+      operationId: listSchedules
+      security:
+        - OAuth2: [openid, ewacp.scheduler.read]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - name: owner_service
+          in: query
+          schema:
+            type: string
+            example: workflow-engine
+      responses:
+        '200':
+          description: Schedules returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Schedule'
+              examples:
+                sample:
+                  value:
+                    items:
+                      - id: 33333333-3333-3333-3333-333333333333
+                        tenant_id: acme-corp
+                        cron: 0 9 * * MON-FRI
+                        timezone: America/New_York
+                        owner_service: workflow-engine
+                        status: active
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './common.yaml#/components/responses/Forbidden'
+        '429':
+          $ref: './common.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+    post:
+      tags: [Schedules]
+      summary: Create a schedule
+      operationId: createSchedule
+      security:
+        - OAuth2: [openid, ewacp.scheduler.write]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - $ref: './common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleCreate'
+            examples:
+              cron:
+                value:
+                  cron: 0 */6 * * *
+                  timezone: UTC
+                  payload_ref: s3://bucket/acme/payloads/nightly.json
+                  owner_service: workflow-engine
+                  callback_url: https://workflow.ewacp.example/v1/internal/callbacks/schedule
+      responses:
+        '201':
+          description: Schedule created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+              examples:
+                created:
+                  value:
+                    id: 33333333-3333-3333-3333-333333333333
+                    tenant_id: acme-corp
+                    cron: 0 */6 * * *
+                    timezone: UTC
+                    payload_ref: s3://bucket/acme/payloads/nightly.json
+                    owner_service: workflow-engine
+                    status: active
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '409':
+          $ref: './common.yaml#/components/responses/Conflict'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /schedules/{scheduleId}:
+    delete:
+      tags: [Schedules]
+      summary: Cancel a schedule
+      operationId: cancelSchedule
+      security:
+        - OAuth2: [openid, ewacp.scheduler.write]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - name: scheduleId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Schedule cancelled.
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: './common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: './common.yaml#/components/responses/Conflict'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /schedules/{scheduleId}/runs:
+    get:
+      tags: [TaskRuns]
+      summary: List runs for a schedule
+      operationId: listTaskRuns
+      security:
+        - OAuth2: [openid, ewacp.scheduler.read]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - name: scheduleId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Runs returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TaskRun'
+              examples:
+                sample:
+                  value:
+                    items:
+                      - id: 44444444-4444-4444-4444-444444444444
+                        schedule_id: 33333333-3333-3333-3333-333333333333
+                        attempt: 1
+                        next_run_at: '2026-04-18T09:00:00Z'
+                        dlq: false
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: './common.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: './common.yaml#/components/securitySchemes/OAuth2'
+
+  schemas:
+    Schedule:
+      type: object
+      required: [id, tenant_id, timezone, owner_service, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+        cron:
+          type: string
+          nullable: true
+          description: Cron expression (mutually exclusive with one-shot run_at in create).
+        run_at:
+          type: string
+          format: date-time
+          nullable: true
+        timezone:
+          type: string
+        payload_ref:
+          type: string
+          nullable: true
+        owner_service:
+          type: string
+        callback_url:
+          type: string
+          format: uri
+          nullable: true
+        status:
+          type: string
+          enum: [active, paused, cancelled]
+
+    ScheduleCreate:
+      type: object
+      required: [timezone, owner_service]
+      properties:
+        cron:
+          type: string
+        run_at:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+        payload_ref:
+          type: string
+        owner_service:
+          type: string
+        callback_url:
+          type: string
+          format: uri
+
+    TaskRun:
+      type: object
+      required: [id, schedule_id, attempt, dlq]
+      properties:
+        id:
+          type: string
+          format: uuid
+        schedule_id:
+          type: string
+          format: uuid
+        attempt:
+          type: integer
+          minimum: 0
+        next_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_result:
+          type: string
+          nullable: true
+        dlq:
+          type: boolean

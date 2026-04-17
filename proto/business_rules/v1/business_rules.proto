@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package business_rules.v1;
+
+option go_package = "github.com/ewacp/business-rules-engine/gen/business_rules/v1;business_rulesv1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// Business Rules Engine gRPC API (mirrors REST in openapi/business-rules-engine.yaml).
+
+service BusinessRulesService {
+  rpc ListRuleSets(ListRuleSetsRequest) returns (ListRuleSetsResponse);
+  rpc CreateRuleSet(CreateRuleSetRequest) returns (RuleSet);
+  rpc EvaluateRuleSet(EvaluateRuleSetRequest) returns (EvaluationResult);
+}
+
+message RuleSet {
+  string id = 1;
+  string tenant_id = 2;
+  string key = 3;
+  int32 version = 4;
+  string status = 5;
+  string input_schema_ref = 6;
+  string output_schema_ref = 7;
+  google.protobuf.Struct definition = 8;
+}
+
+message EvaluationResult {
+  string id = 1;
+  string rule_set_id = 2;
+  string correlation_id = 3;
+  string decision = 4;
+  string explanation = 5;
+  string trace_ref = 6;
+  google.protobuf.Timestamp evaluated_at = 7;
+}
+
+message ListRuleSetsRequest {
+  string tenant_id = 1;
+}
+
+message ListRuleSetsResponse {
+  repeated RuleSet items = 1;
+}
+
+message CreateRuleSetRequest {
+  string tenant_id = 1;
+  string key = 2;
+  string input_schema_ref = 3;
+  string output_schema_ref = 4;
+  google.protobuf.Struct definition = 5;
+}
+
+message EvaluateRuleSetRequest {
+  string tenant_id = 1;
+  string rule_set_id = 2;
+  string correlation_id = 3;
+  google.protobuf.Struct inputs = 4;
+}

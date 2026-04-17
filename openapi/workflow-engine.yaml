@@ -1,0 +1,344 @@
+openapi: 3.0.3
+info:
+  title: EWACP Workflow Engine API
+  version: 1.0.0
+  description: |
+    REST API for workflow definitions and instances. gRPC contracts are defined in
+    `proto/workflow_engine/v1/workflow_engine.proto` (same operations, binary protocol).
+
+servers:
+  - url: https://workflow.ewacp.example/v1
+    description: Production
+  - url: http://localhost:8081/v1
+    description: Local development
+
+tags:
+  - name: WorkflowDefinitions
+  - name: WorkflowInstances
+
+security:
+  - OAuth2:
+      - openid
+      - ewacp.workflows.read
+
+paths:
+  /definitions:
+    get:
+      tags: [WorkflowDefinitions]
+      summary: List workflow definitions
+      operationId: listWorkflowDefinitions
+      security:
+        - OAuth2: [openid, ewacp.workflows.read]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, active, deprecated]
+      responses:
+        '200':
+          description: Definitions returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowDefinition'
+              examples:
+                sample:
+                  value:
+                    items:
+                      - id: 11111111-1111-1111-1111-111111111111
+                        tenant_id: acme-corp
+                        key: onboarding
+                        version: 3
+                        status: active
+                        created_at: '2026-04-17T12:00:00Z'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './common.yaml#/components/responses/Forbidden'
+        '429':
+          $ref: './common.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+    post:
+      tags: [WorkflowDefinitions]
+      summary: Create a new workflow definition version
+      operationId: createWorkflowDefinition
+      security:
+        - OAuth2: [openid, ewacp.workflows.write]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - $ref: './common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowDefinitionCreate'
+            examples:
+              onboarding:
+                value:
+                  key: onboarding
+                  graph:
+                    start: start
+                    nodes:
+                      start: { type: noop }
+                      approve: { type: human_task, assignee_role: manager }
+                    edges:
+                      - from: start
+                        to: approve
+      responses:
+        '201':
+          description: Definition created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowDefinition'
+              examples:
+                created:
+                  value:
+                    id: 11111111-1111-1111-1111-111111111111
+                    tenant_id: acme-corp
+                    key: onboarding
+                    version: 1
+                    status: draft
+                    created_at: '2026-04-17T12:00:00Z'
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './common.yaml#/components/responses/Forbidden'
+        '409':
+          $ref: './common.yaml#/components/responses/Conflict'
+        '429':
+          $ref: './common.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /definitions/{definitionId}:
+    get:
+      tags: [WorkflowDefinitions]
+      summary: Get workflow definition by id
+      operationId: getWorkflowDefinition
+      security:
+        - OAuth2: [openid, ewacp.workflows.read]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Definition found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowDefinition'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: './common.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /instances:
+    post:
+      tags: [WorkflowInstances]
+      summary: Start a workflow instance
+      operationId: startWorkflowInstance
+      security:
+        - OAuth2: [openid, ewacp.workflows.write]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - $ref: './common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartWorkflowRequest'
+            examples:
+              start:
+                value:
+                  definition_id: 11111111-1111-1111-1111-111111111111
+                  correlation_id: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+                  variables:
+                    requester: user-42
+      responses:
+        '202':
+          description: Instance started (async).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowInstance'
+              examples:
+                accepted:
+                  value:
+                    id: 22222222-2222-2222-2222-222222222222
+                    tenant_id: acme-corp
+                    definition_id: 11111111-1111-1111-1111-111111111111
+                    correlation_id: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+                    current_state: running
+                    status: running
+                    updated_at: '2026-04-17T12:00:05Z'
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: './common.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /instances/{instanceId}/signals:
+    post:
+      tags: [WorkflowInstances]
+      summary: Send a signal to a running instance
+      operationId: signalWorkflowInstance
+      security:
+        - OAuth2: [openid, ewacp.workflows.write]
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+        - $ref: './common.yaml#/components/parameters/TenantId'
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignalRequest'
+            examples:
+              approve:
+                value:
+                  name: approved
+                  payload:
+                    comment: LGTM
+      responses:
+        '204':
+          description: Signal accepted.
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: './common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: './common.yaml#/components/responses/Conflict'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: './common.yaml#/components/securitySchemes/OAuth2'
+
+  schemas:
+    WorkflowDefinition:
+      type: object
+      required: [id, tenant_id, key, version, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+        key:
+          type: string
+          pattern: '^[a-z][a-z0-9-]*$'
+        version:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [draft, active, deprecated]
+        graph:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    WorkflowDefinitionCreate:
+      type: object
+      required: [key, graph]
+      properties:
+        key:
+          type: string
+        graph:
+          type: object
+          additionalProperties: true
+
+    StartWorkflowRequest:
+      type: object
+      required: [definition_id]
+      properties:
+        definition_id:
+          type: string
+          format: uuid
+        correlation_id:
+          type: string
+          format: uuid
+        variables:
+          type: object
+          additionalProperties: true
+
+    WorkflowInstance:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - definition_id
+        - correlation_id
+        - current_state
+        - status
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+        definition_id:
+          type: string
+          format: uuid
+        correlation_id:
+          type: string
+        current_state:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        updated_at:
+          type: string
+          format: date-time
+
+    SignalRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true

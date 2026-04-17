@@ -1,0 +1,185 @@
+openapi: 3.0.3
+info:
+  title: EWACP Common Components
+  version: 1.0.0
+  description: Shared schemas referenced by EWACP service OpenAPI documents.
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      description: |
+        OAuth 2.0 Authorization Code + Bearer tokens (OpenID Connect).
+        Scopes are service-specific; see each API's security requirements.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.ewacp.example/oauth2/authorize
+          tokenUrl: https://auth.ewacp.example/oauth2/token
+          scopes:
+            openid: OpenID Connect
+            profile: Basic profile
+            email: Email claim
+            ewacp.workflows.read: Read workflow definitions and instances
+            ewacp.workflows.write: Mutate workflow definitions and instances
+            ewacp.scheduler.read: Read schedules and task runs
+            ewacp.scheduler.write: Create and mutate schedules
+            ewacp.persistence.read: Read tenant data
+            ewacp.persistence.write: Mutate tenant data
+            ewacp.rules.read: Read rule sets
+            ewacp.rules.write: Create and version rule sets
+            ewacp.rules.evaluate: Evaluate rules
+
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: End-to-end correlation id for tracing (generated if omitted).
+      schema:
+        type: string
+        format: uuid
+        example: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+    TenantId:
+      name: X-Tenant-ID
+      in: header
+      required: true
+      description: Tenant scope for the request (multi-tenant isolation).
+      schema:
+        type: string
+        example: acme-corp
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Idempotency token for safe retries on mutating operations.
+      schema:
+        type: string
+        format: uuid
+        example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable error code.
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: Human-readable description.
+          example: Request validation failed.
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+        correlation_id:
+          type: string
+          format: uuid
+          nullable: true
+    FieldError:
+      type: object
+      properties:
+        field:
+          type: string
+          example: body.workflow_key
+        issue:
+          type: string
+          example: must match pattern ^[a-z][a-z0-9-]*$
+
+  responses:
+    BadRequest:
+      description: Malformed request or failed validation (HTTP 400).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            validation:
+              value:
+                code: VALIDATION_ERROR
+                message: Request validation failed.
+                details:
+                  - field: body.name
+                    issue: is required
+                correlation_id: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+    Unauthorized:
+      description: Missing or invalid bearer token (HTTP 401).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            unauthorized:
+              value:
+                code: UNAUTHORIZED
+                message: Authentication required.
+                correlation_id: null
+    Forbidden:
+      description: Authenticated but not permitted for this resource (HTTP 403).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            forbidden:
+              value:
+                code: FORBIDDEN
+                message: Insufficient scope for this operation.
+                correlation_id: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+    NotFound:
+      description: Resource not found (HTTP 404).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            not_found:
+              value:
+                code: NOT_FOUND
+                message: Resource not found.
+                correlation_id: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+    Conflict:
+      description: Version or idempotency conflict (HTTP 409).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            conflict:
+              value:
+                code: CONFLICT
+                message: Definition version already exists.
+                correlation_id: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+    TooManyRequests:
+      description: Rate limit exceeded (HTTP 429).
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until the client may retry.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            rate_limit:
+              value:
+                code: RATE_LIMITED
+                message: Too many requests. Retry later.
+                correlation_id: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+    InternalError:
+      description: Unexpected server error (HTTP 500).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            internal:
+              value:
+                code: INTERNAL_ERROR
+                message: An unexpected error occurred.
+                correlation_id: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
