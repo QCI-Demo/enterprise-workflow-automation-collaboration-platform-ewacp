@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "taskScheduler.fullname" . }}-config
+  labels:
+    {{- include "taskScheduler.labels" . | nindent 4 }}
+data:
+  SERVER_PORT: {{ .Values.config.serverPort | quote }}
+  SPRING_DATASOURCE_URL: {{ .Values.config.springDatasourceUrl | quote }}
+  SPRING_DATASOURCE_USERNAME: {{ .Values.config.springDatasourceUsername | quote }}
+  SPRING_JPA_HIBERNATE_DDL_AUTO: {{ .Values.config.springJpaHibernateDdlAuto | quote }}
